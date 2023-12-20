@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+      containers:
+        - name: webapp
+          image: cosmeaf/cosmeaf_image:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: TYPEORM_CONNECTION
+              value: "mysql"
+            - name: TYPEORM_HOST
+              value: "mysql"
+            - name: TYPEORM_PORT
+              value: "3306"
+            - name: TYPEORM_USERNAME
+              value: "test"
+            - name: TYPEORM_PASSWORD
+              value: "test"
+            - name: TYPEORM_DATABASE
+              value: "test"
+            - name: TYPEORM_SYNCHRONIZE
+              value: "true"
+            - name: TYPEORM_ENTITIES
+              value: "src/entity/*.js"
+            - name: TYPEORM_SUBSCRIBERS
+              value: "src/subscriber/*.js"
+            - name: TYPEORM_MIGRATIONS
+              value: "src/migration/*.js"
+            - name: TYPEORM_ENTITIES_DIR
+              value: "src/entity"
+            - name: TYPEORM_MIGRATIONS_DIR
+              value: "src/migration"
+            - name: TYPEORM_SUBSCRIBERS_DIR
+              value: "src/subscriber"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
