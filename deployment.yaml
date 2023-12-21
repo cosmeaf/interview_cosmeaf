@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp-pod
+  labels:
+    app: webapp
+spec:
+  containers:
+    - name: webapp-container
+      image: cosmeaf/cosmeaf_image:latest
+      ports:
+        - containerPort: 3000
+      env:
+        - name: TYPEORM_CONNECTION
+          value: "mysql"
+        - name: TYPEORM_HOST
+          value: "192.168.0.241"
+        - name: TYPEORM_PORT
+          value: "3306"
+        - name: TYPEORM_USERNAME
+          value: "test"
+        - name: TYPEORM_PASSWORD
+          value: "test"
+        - name: TYPEORM_DATABASE
+          value: "test"
+        - name: TYPEORM_SYNCHRONIZE
+          value: "true"
+        - name: TYPEORM_ENTITIES
+          value: "src/entity/*.js"
+        - name: TYPEORM_SUBSCRIBERS
+          value: "src/subscriber/*.js"
+        - name: TYPEORM_MIGRATIONS
+          value: "src/migration/*.js"
+        - name: TYPEORM_ENTITIES_DIR
+          value: "src/entity"
+        - name: TYPEORM_MIGRATIONS_DIR
+          value: "src/migration"
+        - name: TYPEORM_SUBSCRIBERS_DIR
+          value: "src/subscriber"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-service-loadbalancer
+spec:
+  type: LoadBalancer
+  selector:
+    app: webapp
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+      nodePort: 30000

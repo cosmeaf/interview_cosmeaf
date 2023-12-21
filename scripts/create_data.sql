@@ -1,4 +1,4 @@
--- Estrutura de tabela para 'migrations'
+USE test;
 
 DROP TABLE IF EXISTS `migrations`;
 

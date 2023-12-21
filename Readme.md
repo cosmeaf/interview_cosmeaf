@@ -1,62 +1,159 @@
-# Criando Cluster Kubernate
+# Passo a Passo para Implantação
 
-minikube start --wait=false --driver=docker --nodes=2 --no-vtx-check
+##### Este guia fornece instruções para criar uma imagem Docker, configurar um cluster Kubernetes, fazer redirecionamento para a aplicação web, criar um contêiner MySQL e implantar sua aplicação web e banco de dados MySQL no cluster Kubernetes.
+
+### 1. Criando a Imagem Docker
+
+Primeiro, crie a imagem Docker da sua aplicação:
+
+```
+docker build -t interview_image:1.0.2 .
+docker scan interview_image:1.0.2
+docker tag interview_image:1.0.2 cosmeaf/interview_image:1.0.2
+docker push cosmeaf/interview_image:1.0.2
+docker pull cosmeaf/interview_image:1.0.2
+
+```
+
+### 2. Criando o Cluster Kubernetes
+
+Você pode escolher entre o Docker ou o VirtualBox como driver para o Minikube. Certifique-se de selecionar o driver desejado e criar o cluster:
+
+```
+# Usando Docker como driver
+minikube start --wait=false --driver=docker --no-vtx-check
+
+# Usando VirtualBox como driver
+minikube start --wait=false --driver=virtualbox --no-vtx-check
+
+# Verifique o estado dos pods no cluster
 minikube kubectl -- get pods -A
+
+# Crie um namespace para o cluster (opcional)
 kubectl create namespace kube-webapp-cluster
+
+# Configure o contexto atual para o namespace criado (opcional)
 kubectl config set-context --current --namespace=kube-webapp-cluster
 
-kubectl create configmap migration-script --from-file=./scripts/create_data.sql
+```
 
-kubectl delete -f k8s/
-kubectl apply -f k8s/
+### 3. Configurando o Redirecionamento
 
+Habilite o Ingress no Minikube e defina o redirecionamento para o serviço da aplicação web:
+
+```
+# Habilite o addon Ingress
 minikube addons enable ingress
 
-kubectl port-forward service/webapp-service 3000:3000
+# Obtenha a URL do serviço da aplicação web
+minikube service --url webapp-service-loadbalancer
 
-# Exclude Cluster Kubernate
+# Opção 1: Sem especificar um endereço IP público
+kubectl port-forward service/webapp-service-loadbalancer 3000:3000
 
-minikube delete -p minikube
+# Opção 2: Especificando um endereço IP público
+IP_PUBLICO=$(curl -4 -s ifconfig.me)
+kubectl port-forward service/webapp-service-loadbalancer 3000:3000 --address $IP_PUBLICO
 
-# Debug
+```
 
-minikube kubectl -- get pods -A
-kubectl get pods -l app=webapp -n kube-webapp-cluster
-kubectl logs -l app=webapp -n kube-webapp-cluster
-kubectl describe pod -l app=webapp -n kube-webapp-cluster
-kubectl describe service webapp-service -n kube-webapp-cluster
+### 4. Criando o Contêiner MySQL
 
-# Reiniciando PODs
+Agora, crie um contêiner MySQL com volume persistente e uma tabela de migração:
 
-kubectl delete pods -l app=webapp -n kube-webapp-cluster
+```
+# Crie um volume Docker para o MySQL
+sudo docker volume create mysql_vol
 
-# Sobre Os arquivos YML
+# Execute o contêiner MySQL
+docker run -it -p 3306:3306 \
+ --name mysql \
+ -e MYSQL_ROOT_PASSWORD=test \
+ -e MYSQL_DATABASE=test \
+ -e MYSQL_USER=test \
+ -e MYSQL_PASSWORD=test \
+ --restart unless-stopped \
+ -v mysql_vol:/var/lib/mysql \
+ -d mariadb:5.5
 
-Os arquivos YAML que você compartilhou cobrem uma ampla gama de configurações necessárias para implantar uma aplicação web e um banco de dados MySQL no Kubernetes. Vou fazer uma rápida revisão de cada um para garantir que estão corretamente configurados e prontos para uso:
+# Acesse o shell do contêiner MySQL
+docker exec -it mysql bash -l
+mysql -utest -ptest
 
-app-deployment.yaml
+# Crie uma tabela de migração no banco de dados "test"
+USE test;
 
-Este arquivo define um Deployment para sua aplicação web. As variáveis de ambiente estão configuradas para conexão com um banco de dados MySQL.
-Inclui configurações de recursos e sondas de saúde (liveness e readiness probes).
-app-hpa.yaml
+DROP TABLE IF EXISTS `migrations`;
 
-Define um Horizontal Pod Autoscaler para o seu Deployment da aplicação web.
-Escala com base na utilização de CPU. Porém, o scaleTargetRef deve referenciar o nome correto do Deployment, que é webapp, e não webapp-deployment.
-app-service.yaml
+CREATE TABLE `migrations` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`timestamp` bigint(20) NOT NULL,
+`name` varchar(255) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-Configura um Service do tipo ClusterIP para a aplicação web, permitindo comunicação dentro do cluster Kubernetes.
-ingress.yaml
+```
 
-Define regras de Ingress para o serviço da aplicação web.
-O nome do serviço no backend deve corresponder ao nome definido no Service da aplicação web (webapp-service).
-mysql-deployment.yaml
+### 5. Criando o Cluster Kubernetes (novamente)
 
-Cria um Deployment para o banco de dados MySQL.
-Inclui configuração de ambiente e montagem de volume para persistência de dados.
-mysql-pvc.yaml
+Crie novamente o cluster Kubernetes para implantar sua aplicação web e o banco de dados MySQL:
 
-Define um PersistentVolumeClaim para o MySQL, garantindo armazenamento persistente.
-mysql-service.yaml
+```
+# Usando Docker como driver (caso ainda não tenha criado)
+minikube start --driver=docker
 
-Configura um Service para o MySQL, facilitando a comunicação com o banco de dados dentro do cluster.
-Pod MySQL
+# Usando VirtualBox como driver (caso ainda não tenha criado)
+minikube start --wait=false --driver=virtualbox --no-vtx-check
+
+# Liste os perfis do Minikube (opcional)
+minikube profile list
+
+# Aplique as configurações do Deployment e dos serviços da aplicação web
+kubectl apply -f deployment.yaml
+
+```
+
+### 6. Obtendo IP Dinâmico para Acesso à Aplicação
+
+Você pode usar o script a seguir para adicionar itens à sua aplicação e obter o IP da aplicação web:
+
+```
+#!/bin/bash
+
+HOST=$(minikube service --url webapp-service-loadbalancer)
+
+for i in {1..10}; do
+  title="Item $i"
+  content="Content $i"
+
+  curl -X POST \
+   -H "Content-Type: application/json" \
+   -d "{\"title\": \"$title\", \"content\": \"$content\"}" \
+   "$HOST"
+
+  echo "Item $i adicionado."
+done
+
+# Liste os perfis do Minikube (opcional)
+minikube profile list
+
+# Liste os contextos do Kubernetes (opcional)
+kubectl config get-contexts
+
+# Verifique o estado dos pods (opcional)
+kubectl get pods
+
+# Verifique os serviços (opcional)
+kubectl get services
+
+```
+
+### 7. Excluindo o Cluster Kubernetes
+
+Após concluir o uso do cluster, você pode excluí-lo usando o seguinte comando:
+
+### 8. Sobre os Arquivos YAML
+
+Os arquivos YAML que você compartilhou cobrem uma ampla gama de configurações necessárias para implantar uma aplicação web e um banco de dados MySQL no Kubernetes. Certifique-se de que as configurações nos arquivos estão corretas antes de aplicá-las no cluster.
+
+Espero que este guia seja útil para implantar sua aplicação web e banco de dados MySQL no Kubernetes. Certifique-se de revisar e personalizar os arquivos YAML de acordo com suas necessidades específicas.

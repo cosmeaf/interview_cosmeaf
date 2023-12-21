@@ -1,5 +1,7 @@
 #!/bin/bash
 
+HOST=$(minikube service --url webapp-service-loadbalancer)
+
 for i in {1..10}; do
   title="Item $i"
   content="Content $i"
@@ -7,8 +9,7 @@ for i in {1..10}; do
   curl -X POST \
     -H "Content-Type: application/json" \
     -d "{\"title\": \"$title\", \"content\": \"$content\"}" \
-    http://localhost:3000/posts
+    "$HOST"
 
   echo "Item $i adicionado."
 done
-
